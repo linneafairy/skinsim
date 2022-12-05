@@ -8,6 +8,7 @@
 import random
 
 from cmu_112_graphics import *
+
 #from PIL import Image, ImageTk
 
 #classes
@@ -17,8 +18,8 @@ class Issue:
         self.name = name
         self.status = "active"
         self.reactions = loadTripleColList('reactSkin.csv')
-        print (self.reactions)
-        self.productsUsed = []
+        self.productsUsed = set()
+        self.worse = False
     
     def __repr__(self):
         return self.name
@@ -34,6 +35,9 @@ class Issue:
 
     def useNewProduct(self, product):
         #dictionary?
+        self.productsUsed.add(product.getName)
+        if product.getName() in self.productsUsed:
+            print(f"{product.geName()} already used")
         if product in self.reactions:
             return 1
         else:
@@ -42,27 +46,25 @@ class Issue:
     def drawSelf(self,canvas,app):
         #edit to create images
         canvas.create_text(app.width/2, (app.height)/3 + 5,
-                        text=f'insert image here',
-                        font='Arial 10 bold',
-                        fill='blue')
+                        text=f'insert {self.name} here',
+                        font='Times 15 bold',
+                        fill='red')
     
     
 class Product:
-    def __init__(self, name, x, y):
+    def __init__(self, name, x, y, img):
         self.interactions = {}
         self.name = name
+        self.image = img
+
         self.x = x
         self.y = y
-        self.isClicked = False
     
     def getName(self):
         return self.name
     
     def getLoc(self):
         return (self.x, self.y)
-    
-    def getIsClicked(self):
-        return self.isClicked
 
     def getClickableArea(self):
         #top left
@@ -82,22 +84,18 @@ class Product:
                         text=f'{self.name}',
                         font='Arial 10 bold',
                         fill='blue')
-        png = PhotoImage(file = 'bottle.png')
-        png = png.subsample(5, 5)
+        png = PhotoImage(file = self.image)
+        png = png.subsample(4, 4)
         canvas.create_image(self.x, self.y, image = png)
-    
-    def selectSelf(self, canvas):
-        canvas.create_rectangle(self.getClickableArea())
     
     def checkClick(self, mousex, mousey):
         rect = self.getClickableArea()
         if (rect[0] < mousex) and (rect[2] > mousex) and \
             (rect[1] < mousey) and (rect[3] > mousey):
                 print(f"clicked {self.name} in area {rect}")
-                self.isClicked = True
+                return True
         else:
-            self.isClicked = False
-        return self.isClicked
+            return False
 
 #functions
 #read data from the files
@@ -107,6 +105,15 @@ def loadSingleColList(filename):
     list = []
     for line in fileString.splitlines():
         list.append(line)
+    return list
+
+def loadDoubleColList(filename):
+    with open(filename, "r", encoding="utf-8") as f:
+        fileString = f.read()
+    list = []
+    for line in fileString.splitlines():
+        items = line.split(",")
+        list.append((items[0],items[1].strip()))
     return list
 
 def loadTripleColList(filename):
@@ -128,12 +135,10 @@ def generateNewIssue():
     return issue
 
 def startNewGame():
-    productReactions = loadTripleColList("reactProduct.csv")
-    skinReactions = loadTripleColList("reactSkin.csv")
     condition = generateNewIssue()
     points = 0
     screen = "start"
-    return condition, points, productReactions, skinReactions, screen
+    return condition, points, screen
 
 def startNewTry(app):
     if app.points > app.highScore:
@@ -150,20 +155,32 @@ def appStarted(app):
     startingInfo = startNewGame()
     app.condition = startingInfo[0]
     app.points = startingInfo[1]
-    app.productReactions = startingInfo[2]
-    app.skinReactions = startingInfo[3]
-    app.screen = startingInfo[4]
-    app.productsList = loadSingleColList("products.csv")
+    app.screen = startingInfo[2]
+    app.productsList = loadDoubleColList("products.csv")
     app.products = []
     app.highScore = 0
+    app.currentlySelecting = None
 
     #create list of product instances equally spaced
     slicex = (app.width/(len(app.productsList)))-10
     i = 0.5
     for item in app.productsList:
-        width = max(10,len(item)/2)
-        app.products.append(Product(item,(slicex+width) * i, 100))
+        width = max(10,len(item[0])/2)
+        app.products.append(Product(item[0],(slicex+width) * i, 100, item[1]))
         i += 1
+
+def mousePressed(app, event):
+    if app.screen == "play":
+        for item in app.products:
+            if(item.checkClick(event.x, event.y)):
+                app.currentlySelecting = item
+
+def mouseDragged(app, event): 
+    print("dragging")
+    app.currentlySelecting.changeLoc(event.x, event.y)
+
+def mouseReleased(app, event):
+    print(f'released {app.currentlySelecting.getName()}')
 
 def keyPressed(app, event):
     if app.screen == "start":
@@ -176,43 +193,21 @@ def keyPressed(app, event):
         if event.key == "Return":
             startNewTry(app)
 
-def mousePressed(app, event):
-    if app.screen == "play":
-        for item in app.products:
-            if item.checkClick(event.x, event.y):
-                app.points += app.condition.useNewProduct(item.getName())
-
 def redrawAll(app, canvas):
     #screen the user starts on
     if app.screen == "start":
-        canvas.create_text(app.width/2, app.height*(2/3),
-                        text=f'Press Enter to start new game!',
-                        font='Arial 20 bold',
-                        fill='blue')
-        canvas.create_text(app.width/2, app.height/2,
-                        text=f'Your High Score: {app.highScore}',
-                        font='Arial 20 bold',
-                        fill='green')
+        drawStart(canvas, app)
     
     #screen for playing the game
     elif app.screen == "play":
         canvas.create_text(app.width/2, app.height*(5/6),
                         text=f'current points = {app.points}, \
                         \nPress D to end game',
-                        font='Arial 10 bold',
-                        fill='blue')
-        canvas.create_text(app.width/2, app.height*(2/3),
-                        text=f'condition = {app.condition}',
-                        font='Arial 20 bold',
+                        font='Times 10 bold',
                         fill='blue')
         drawAllProducts(canvas,app)
         drawSkinRepresentation(canvas,app)
         drawIssue(canvas, app)
-
-        #test
-        for item in app.products:
-            if item.getIsClicked() == True:
-                item.selectSelf(canvas)
     
     #end screen
     elif app.screen == "finish":
@@ -232,14 +227,35 @@ def drawAllProducts(canvas, app):
 
 def drawSkinRepresentation(canvas, app):
     num = 200
+    '''
     for i in range(3):
         canvas.create_line(app.width*1/4, num + (i*50),
                             app.width*3/4, num + (i*50),
                             width = 2,
                             activewidth = 6) 
+    '''
+    png = PhotoImage(file = "skin.png")
+    png = png.subsample(2, 2)
+    canvas.create_image(app.width/2, app.height/2,
+                        image = png)
 
 def drawIssue(canvas,app):
     app.condition.drawSelf(canvas,app)  
 
+def drawStart(canvas, app):
+    canvas.create_text(app.width/2, app.height*(2/3),
+                        text=f'Press Enter to start new game!',
+                        font='Arial 20 bold',
+                        fill='blue')
+    canvas.create_text(app.width/2, app.height/2,
+                        text=f'Your High Score: {app.highScore}',
+                        font='Arial 20 bold',
+                        fill='green')
+
+    png = PhotoImage(file = "gametitle.png")
+    png = png.subsample(3, 3)
+    canvas.create_image(app.width/2, app.height/3-15,
+                        image = png)
+
 #Start graphics loop
-runApp(width=600, height=600)
+runApp(width=800, height=600)
