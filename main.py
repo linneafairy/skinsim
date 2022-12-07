@@ -49,7 +49,7 @@ class Issue:
         return self.name
     
     def getName(self):
-        return self.name
+        return self.name.strip()
     
     def getStatus(self):
         return self.status
@@ -153,7 +153,8 @@ def loadSingleColList(filename):
         fileString = f.read()
     list = []
     for line in fileString.splitlines():
-        list.append(line)
+        items = line.split(",")
+        list.append(items[0])
     return list
 
 def loadDoubleColList(filename):
@@ -168,6 +169,7 @@ def loadDoubleColList(filename):
 #pick a new random skin condition
 def generateNewIssue():
     options = loadSingleColList('csv/issues.csv')
+    print(options)
     name = random.choice(options)
     issue = Issue(name)
     return issue
@@ -190,7 +192,15 @@ def startNewTry(app):
     app.secondText = "Error"
 
 def calculatePoints(app):
-    return app.points
+    numProducts = len(app.condition.getProductsUsed())
+    if (app.points > 0) and (numProducts == 1):
+        return "A"
+    elif (app.points > 0) and (numProducts <= 2):
+        return "B"
+    elif (app.points == 0) or (numProducts > 2):
+        return "C"
+    else:
+        return "F"
 
 def loadProductImage(app, filename):
     png = PhotoImage(file = filename)
@@ -210,8 +220,8 @@ def appStarted(app):
     app.drawDialogue = False
     app.textToDisplay = "Error"
     app.secondText = "Error"
-
-    app.skinImg = PhotoImage(file = "images/skin.png").subsample(2, 2)
+    app.skinLink = "images/"+app.condition.getName()+"skin.png"
+    app.skinImg = PhotoImage(file = f"images/{app.condition.getName()}skin.png").subsample(2, 2)
     app.titleImg = PhotoImage(file= "images/gametitle.png").subsample(3, 3)
 
     #create list of product instances equally spaced
@@ -234,11 +244,11 @@ def mousePressed(app, event):
             app.screen = "finish"
 
 def mouseDragged(app, event): 
-    if (app.currentlySelecting):
+    if (app.currentlySelecting) and (app.screen == "play"):
         app.currentlySelecting.changeLoc(event.x, event.y)
 
 def mouseReleased(app, event):
-    if (app.currentlySelecting):
+    if (app.currentlySelecting) and (app.screen == "play"):
         if app.condition.isInClickableArea(event.x, event.y, app):
             result = int(app.condition.useNewProduct(app.currentlySelecting.getName()))
             app.drawDialogue = True
@@ -246,13 +256,13 @@ def mouseReleased(app, event):
                 app.textToDisplay = f'Successfully addressed {app.condition.getName()} using item {app.currentlySelecting.getName()}'
                 app.secondText = 'Round complete! Click to end game'
             elif result == -2: 
-                app.textToDisplay = f' You have already used {app.currentlySelecting.getName()}, try again!' 
+                app.textToDisplay = f'You have already used {app.currentlySelecting.getName()}, try again!' 
                 app.secondText = 'Click to exit'
             elif result == -1:
                 app.textToDisplay = f'Uh Oh, {app.currentlySelecting.getName()} has worsened the {app.condition.getName()}'
                 app.secondText = 'Click to exit'
             elif result == -3:
-                app.textToDisplay = f'Uh Oh, {app.currentlySelecting.getName()} has reacted with another product, causing irritation!'
+                app.textToDisplay = f'Uh Oh, {app.currentlySelecting.getName()} has reacted witfh another product, causing irritation!'
                 app.secondText = 'Round complete! Click to end game'
             else:
                 app.textToDisplay = f'No change!'
@@ -261,8 +271,8 @@ def mouseReleased(app, event):
             if app.points < -1:
                 app.textToDisplay = f'Oh No! Your skin has become too damaged. You lose this round!'
                 app.secondText = 'Round complete! Click to end game'
+            return result
         app.currentlySelecting = None
-        return result
 
 def keyPressed(app, event):
     if app.screen == "start":
@@ -317,15 +327,18 @@ def redrawAll(app, canvas):
     
     #end screen
     elif app.screen == "finish":
-        temptext = f'Game Over! Your final score was {app.points} points.'
-        canvas.create_text(app.width/2, app.height*(2/3),
-                        text=temptext,
-                        font='Arial 20 bold',
-                        fill='light blue')
+        temptext = f'Game Over! \nYour final point score was {app.points} points.'
+        temptext += f' Your final grade, based on products used, was {calculatePoints(app)}.'
         canvas.create_text(app.width/2, app.height*(1/3),
+                        text=temptext,
+                        font='Arial 30 bold',
+                        fill='grey',
+                        width = 500,
+                        justify = 'center')
+        canvas.create_text(app.width/2, app.height*(2/3),
                         text= "Press Enter to try again!",
                         font='Arial 20 bold',
-                        fill='grey')
+                        fill='light blue')
 
 #graphics helper functions
 def drawAllProducts(canvas, app):
